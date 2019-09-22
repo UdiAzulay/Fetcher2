@@ -131,7 +131,7 @@ namespace Fetcher2.UI
         {
             get { return _browserDoc;}
             set {
-                if (_browserDoc != null) {
+                if (_browserDoc != null && _browserDoc.Context != null) {
                     _browserDoc.Context.StepChanged -= Context_Step;
                     _browserDoc.Context.StateChanged -= Context_StateChanged;
                 }
@@ -196,7 +196,7 @@ namespace Fetcher2.UI
         private void OwnerWindow_FileChanged(object sender, Core.ContextManager.FileChangedEventArgs e)
         {
             if (e.OldValue != null) e.OldValue.Changed -= File_Changed;
-            if (sender is Core.ContextManager cm && cm.File != null) cm.Changed += File_Changed;
+            if (sender is Core.ContextManager cm && cm.File != null) cm.File.Changed += File_Changed;
             RefreshActions();
         }
 
@@ -306,7 +306,7 @@ namespace Fetcher2.UI
 
         protected override void Dispose(bool disposing)
         {
-            if (!disposing)
+            if (disposing)
             {
                 OwnerWindow.DocumentCreated -= OwnerWindow_DocumentCreated;
                 var dataSet = OwnerWindow?.ContextManager?.DataSet;

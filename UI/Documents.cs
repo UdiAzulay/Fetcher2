@@ -76,11 +76,12 @@ namespace Fetcher2.UI
     public class BrowserDocument : Document
     {
         public ChromiumWebBrowser Browser { get; private set; }
-        public string Url { get { return Browser.Address; } }
-        public Core.Context Context { get; private set; }
         private MenuStrip AddressBar;
         private ToolStripTextBox AddressBox;
+        private Core.Context _context;
         private string _browserTitle;
+        public string Url { get { return Browser.Address; } }
+
         public BrowserDocument(AppWindow owner, bool show = true, bool contextAcquired = false) : base(owner)
         {
             MainMenuStrip = new MenuStrip() {
@@ -162,23 +163,27 @@ namespace Fetcher2.UI
                     AddressBar.Items["navigate-backward"].Enabled = a.CanGoBack;
                 });
             };
-            OwnerWindow.ContextManager.FileChanged += OwnerWindow_FileChanged;
-            OwnerWindow_FileChanged(OwnerWindow, EventArgs.Empty);
+            Context = new Core.Context(Browser, OwnerWindow.ContextManager);
             owner.ContextManager.AddContext(Context, contextAcquired);
             if (show) Show();
         }
 
-        private void OwnerWindow_FileChanged(object sender, EventArgs e)
+        public Core.Context Context
         {
-            if (Context != null) {
-                Context.Exception -= Context_Exception;
-                Context.StateChanged -= Context_StateChanged;
-                (Context as IDisposable).Dispose();
-                Context = null;
+            get { return _context; }
+            private set
+            {
+                if (_context != null) {
+                    _context.Exception -= Context_Exception;
+                    _context.StateChanged -= Context_StateChanged;
+                    (_context as IDisposable).Dispose();
+                }
+                _context = value;
+                if(_context != null) { 
+                    _context.Exception += Context_Exception;
+                    _context.StateChanged += Context_StateChanged;
+                }
             }
-            Context = new Core.Context(Browser, OwnerWindow);
-            Context.Exception += Context_Exception;
-            Context.StateChanged += Context_StateChanged;
         }
 
         private void Context_StateChanged(object sender, EventArgs e)
@@ -191,13 +196,18 @@ namespace Fetcher2.UI
             this.MessageException(e.ExceptionObject as Exception);
         }
 
-        protected override void OnFormClosing(FormClosingEventArgs e)
+        protected override void Dispose(bool disposing)
         {
-            base.OnFormClosing(e);
-            if (e.Cancel) return;
-            Browser.Dispose();
-            (Context as IDisposable).Dispose();
+            if (disposing) {
+                if (_context != null)
+                {
+                    OwnerWindow.ContextManager.RemoveContext(_context);
+                    Context = null;
+                }
+            }
+            base.Dispose(disposing);
         }
+
 
         public void RegisterJsObject()
         {

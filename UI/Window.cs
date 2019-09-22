@@ -62,9 +62,15 @@ namespace Fetcher2.UI
             if (!string.IsNullOrEmpty(fileName) && System.IO.File.Exists(fileName)) Open(fileName);
             else New();
         }
+
         protected override void Dispose(bool disposing)
         {
-            if (ContextManager != null) { ContextManager.Dispose(); ContextManager = null; }
+            if (disposing) {
+                if (ContextManager != null) ContextManager.StopAll();
+                CloseAllDocuments();
+                Application.DoEvents();
+                if (ContextManager != null) { ContextManager.Dispose(); ContextManager = null; }
+            }
             base.Dispose(disposing);
         }
 
@@ -122,8 +128,6 @@ namespace Fetcher2.UI
                         new ToolStripSeparator(),
                         new MenuButton("Refre&sh Data", null, (s, a) => LogAndData.RefreshDataTables()),
                         new MenuButton("Clear &Data", null, (s, a) => ContextManager.ClearData()),
-                        new ToolStripSeparator(),
-                        new MenuButton("Close All &Windows", null, (s, a) => CloseAllDocuments()),
                     },
                 },
                 new MenuButton("&Execute")
@@ -140,6 +144,8 @@ namespace Fetcher2.UI
                         new MenuButton("&Tile Horizontaly", null, (s, a) => LayoutMdi(MdiLayout.TileHorizontal)),
                         new MenuButton("&Tile Verticaly", null, (s, a) => LayoutMdi(MdiLayout.TileVertical)),
                         new MenuButton("&Arrange Icons", null, (s, a) => LayoutMdi(MdiLayout.ArrangeIcons)),
+                        new ToolStripSeparator(),
+                        new MenuButton("Close All &Windows", null, (s, a) => CloseAllDocuments()),
                     }
                 },
                 new MenuButton("&Help") {
@@ -229,7 +235,9 @@ namespace Fetcher2.UI
 
         public void CloseAllDocuments()
         {
-            foreach (var v in MdiChildren) v.Close();
+            var children = MdiChildren;
+            for (int i = children.Length - 1; i >= 0; i--)
+                children[i].Close();
         }
 
         public void New() { ContextManager.File = new Actions.File(); }

@@ -81,10 +81,6 @@ namespace Fetcher2.Core
             browser.FrameLoadEnd += Browser_FrameLoadEnd;
         }
 
-        public Context(IWebBrowser browser, UI.AppWindow window) 
-            : this(browser, window.ContextManager) {
-        }
-
         void IDisposable.Dispose()
         {
             if (IsRunning) { Stop(); _executeTask.Wait(); }

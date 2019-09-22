@@ -67,18 +67,26 @@ namespace Fetcher2.Core
 
         public void StopAll()
         {
-            foreach (var v in _contexts)
-            {
-                try { if (v.State != ContextState.Stop) v.Stop(); }
-                catch { }
+            for(var i = 0; i < 2; i++) { 
+                foreach (var v in _contexts)
+                {
+                    try { if (v.State != ContextState.Stop) v.Stop(); }
+                    catch { }
+                }
+                System.Threading.Thread.Sleep(300);
             }
         }
 
         public void BreakAll()
         {
-            foreach (var v in _contexts) { 
-                try { if (v.State != ContextState.Stop) v.Break(); }
-                catch { }
+            for (var i = 0; i < 2; i++)
+            {
+                foreach (var v in _contexts)
+                {
+                    try { if (v.State != ContextState.Stop) v.Break(); }
+                    catch { }
+                }
+                System.Threading.Thread.Sleep(300);
             }
         }
 
@@ -97,6 +105,15 @@ namespace Fetcher2.Core
             if (context.State == ContextState.Stop && !acquired)
                 lock (this) _freeContexts.Add(context);
             context.StateChanged += Context_StateChanged;
+        }
+
+        public void RemoveContext(Context context)
+        {
+            lock (this) { 
+                if (_contexts.Remove(context))
+                    context.StateChanged -= Context_StateChanged;
+                _freeContexts.Remove(context);
+            }
         }
 
         private void Context_StateChanged(object sender, EventArgs e)
