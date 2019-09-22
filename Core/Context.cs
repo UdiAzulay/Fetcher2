@@ -38,18 +38,13 @@ namespace Fetcher2.Core
 
         public ContextManager Manager { get; private set; }
         public IWebBrowser Browser { get; private set; }
-        public System.Data.DataSet DataSet { get; private set; }
-        public HashSet<string> Values { get; private set; }
-        public Actions.File CurrentFile { get; private set; }
         public Actions.Action CurrentAction { get; private set; }
 
         private Dictionary<string, Record> _records;
-
         private System.Threading.AutoResetEvent _continueEvent;
         private System.Threading.ManualResetEvent _breakEvent;
         private System.Threading.ManualResetEvent _frameLoadEvent;
         private System.Threading.ManualResetEvent _pageLoadEvent;
-        private Action<Action> UIThreadCall;
         private Task _executeTask;
         private long _state = (long)ContextState.Stop;
         private long _isWait = 0;
@@ -62,7 +57,7 @@ namespace Fetcher2.Core
             }
             private set {
                 System.Threading.Interlocked.Exchange(ref _state, (long)value);
-                UIThreadCall(() => StateChanged?.Invoke(this, EventArgs.Empty));
+                Manager.UIThreadCall(() => StateChanged?.Invoke(this, EventArgs.Empty));
             }
         }
 
@@ -72,31 +67,34 @@ namespace Fetcher2.Core
             private set { System.Threading.Interlocked.Exchange(ref _isWait, value ? 1 : 0); }
         }
 
-        public Context(IWebBrowser browser, ContextManager manager, Actions.File file, System.Data.DataSet dataSet, HashSet<string> values, Action<Action> uiThreadSync = null)
+        public Context(IWebBrowser browser, ContextManager manager)
         {
             _records = new Dictionary<string, Record>();
             _continueEvent = new System.Threading.AutoResetEvent(true);
             _breakEvent = new System.Threading.ManualResetEvent(false);
             _frameLoadEvent = new System.Threading.ManualResetEvent(false);
             _pageLoadEvent = new System.Threading.ManualResetEvent(false);
-            CurrentFile = file;
             Manager = manager;
             Browser = browser;
-            DataSet = dataSet;
-            UIThreadCall = uiThreadSync ?? ((a) => a());
-            Values = values;
             browser.LoadingStateChanged += Browser_LoadingStateChanged;
             browser.FrameLoadStart += Browser_FrameLoadStart;
             browser.FrameLoadEnd += Browser_FrameLoadEnd;
         }
 
         public Context(IWebBrowser browser, UI.AppWindow window) 
-            : this(browser, window.ContextManager, window.File, window.DataSet, window.Values, window.InvokeOnUiThreadIfRequired) {
+            : this(browser, window.ContextManager) {
         }
 
         void IDisposable.Dispose()
         {
             if (IsRunning) { Stop(); _executeTask.Wait(); }
+            if (Browser != null)
+            {
+                Browser.LoadingStateChanged -= Browser_LoadingStateChanged;
+                Browser.FrameLoadStart -= Browser_FrameLoadStart;
+                Browser.FrameLoadEnd -= Browser_FrameLoadEnd;
+                Browser = null;
+            }
             if (_executeTask != null) {_executeTask.Dispose(); _executeTask = null; }
             if (_breakEvent != null) { _continueEvent.Dispose(); _continueEvent = null; }
             if (_continueEvent != null) {_continueEvent.Dispose(); _continueEvent = null; }
@@ -114,14 +112,15 @@ namespace Fetcher2.Core
         public void Log(string data, string cetegory = null)
         {
             var args = new LogEventArgs() { Category = cetegory, Text = data };
-            if (Logger != null) UIThreadCall(() => Logger.Invoke(this, args));
+            if (Logger != null) Manager.UIThreadCall(() => Logger.Invoke(this, args));
         }
 
-        public Record GetRecord(string record)
+        private Record GetRecord(string record)
         {
             Record ret;
-            if (!DataSet.Tables.Contains(record)) DataSet.Tables.Add(record);
-            var table = DataSet.Tables[record];
+            System.Data.DataTable table;
+            if (!Manager.DataSet.Tables.Contains(record)) Manager.DataSet.Tables.Add(record);
+            table = Manager.DataSet.Tables[record];
             if (_records.TryGetValue(record, out ret)) return ret;
             ret = new Record(table);
             _records.Add(record, ret);
@@ -130,17 +129,12 @@ namespace Fetcher2.Core
 
         public void Record(string record)
         {
-            UIThreadCall(() => GetRecord(record).NextRow());
+            Manager.UIThreadCall(() => GetRecord(record).NextRow());
         }
 
         public void Field(string record, string field, string value, bool isUnique = false)
         {
-            UIThreadCall(() => GetRecord(record).SetField(field, value, isUnique));
-        }
-
-        public void ClearData()
-        {
-            UIThreadCall(() => DataSet.Clear());
+            Manager.UIThreadCall(() => GetRecord(record).SetField(field, value, isUnique));
         }
 
         public Context PushContext(int timeout = -1)
@@ -207,14 +201,18 @@ namespace Fetcher2.Core
                 _skipSelfExecute = false;
                 if (ret is BreakValue br && br.Mode == BreakValue.BreakMode.Goto)
                 {
-                    if (string.IsNullOrEmpty(br.GotoActionID)) action = CurrentFile;
+                    if (string.IsNullOrEmpty(br.GotoActionID)) action = Manager.File;
                     else action = null;// CurrentFile.ActionByID(br.GotoActionID);
                     if (action == null) throw new Exception("Goto action target not found");
                     goto actionStart;
                 }
             } catch (Exception ex) {
-                UIThreadCall(() => Exception?.Invoke(this, new UnhandledExceptionEventArgs(ex, false)));
+                Manager.UIThreadCall(() => Exception?.Invoke(this, new UnhandledExceptionEventArgs(ex, false)));
             } finally {
+                Manager.UIThreadCall(() => {
+                    foreach (var v in _records) v.Value.NextRow();
+                    _records.Clear();
+                });
                 State = ContextState.Stop;
             }
         }
@@ -246,7 +244,7 @@ namespace Fetcher2.Core
             for (int i = 0; i < count; i++)
             {
                 sea.Index = i;
-                UIThreadCall(() => StepChanged?.Invoke(this, sea));
+                Manager.UIThreadCall(() => StepChanged?.Invoke(this, sea));
                 if (State == ContextState.Stop) return null;
                 else if (State == ContextState.Pause) _continueEvent.WaitOne();
                 ret = action.Execute(this, i, data);
@@ -257,7 +255,7 @@ namespace Fetcher2.Core
             return ret;
         }
 
-        private bool IsRunning { get { return (_executeTask != null) && (_executeTask.Status <= TaskStatus.Running); } }
+        private bool IsRunning { get { lock(this) return (_executeTask != null) && (_executeTask.Status <= TaskStatus.Running); } }
 
         public void Play(Actions.Action action, object data, bool skipSelf, bool startPauses)
         {
@@ -280,7 +278,7 @@ namespace Fetcher2.Core
                 State = ContextState.Paly;
                 _breakEvent.Reset();
                 _continueEvent.Set();
-            } else Play(CurrentFile, null, false, false);
+            } else Play(Manager.File, null, false, false);
         }
 
         public void Step()
@@ -288,7 +286,7 @@ namespace Fetcher2.Core
             if (IsRunning) {
                 _breakEvent.Reset();
                 _continueEvent.Set();
-            } else Play(CurrentFile, null, false, true); 
+            } else Play(Manager.File, null, false, true); 
         }
 
         public void Break()
@@ -317,8 +315,9 @@ namespace Fetcher2.Core
     public class Record
     {
         public System.Data.DataTable Table { get; private set; }
-        private List<Tuple<string, Func<System.Data.DataRow, System.Data.DataColumn, bool>>> _validators = new List<Tuple<string, Func<System.Data.DataRow, System.Data.DataColumn, bool>>>();
         public System.Data.DataRow Row { get; private set; }
+        private List<Tuple<string, Func<System.Data.DataRow, System.Data.DataColumn, bool>>> _validators = new List<Tuple<string, Func<System.Data.DataRow, System.Data.DataColumn, bool>>>();
+
         public Record(System.Data.DataTable table) { Table = table; }
         public bool IsValid(System.Data.DataRow row)
         {
@@ -337,8 +336,8 @@ namespace Fetcher2.Core
 
         public void SetField(string field, string value, bool isUnique = false)
         {
-            if (Row == null) Row = Table.NewRow();
             if (!Table.Columns.Contains(field)) Table.Columns.Add(field);
+            if (Row == null) Row = Table.NewRow();
             Row[field] += value;
             if (isUnique) AddValidator(field, (r, c) => (r.Table.FindValue(c, r[c]).Count == 0));
         }

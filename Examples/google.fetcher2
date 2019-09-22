@@ -1,0 +1,24 @@
+﻿<File xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="1" MaxWindows="9">
+  <Children>
+    <Select>
+      <Children>
+        <Record Name="result" />
+        <GetProperty PropertyName="href">
+          <Children>
+            <Field RecordName="result" Name="url" />
+          </Children>
+          <Selector>div.r a:first-child</Selector>
+        </GetProperty>
+        <GetProperty Log="true" PropertyName="innerText">
+          <Children>
+            <Field RecordName="result" Name="desc" />
+          </Children>
+          <Selector>div.s</Selector>
+        </GetProperty>
+      </Children>
+      <Selector>div.rc</Selector>
+    </Select>
+  </Children>
+  <Url>www.google.com?q=Some Test</Url>
+  <LastExecute xsi:nil="true" />
+</File>

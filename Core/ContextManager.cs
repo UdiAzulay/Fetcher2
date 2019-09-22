@@ -8,23 +8,51 @@ namespace Fetcher2.Core
 {
     public class ContextManager : IDisposable
     {
+        public class FileChangedEventArgs : EventArgs
+        {
+            public Actions.File OldValue { get; private set; }
+            public FileChangedEventArgs(Actions.File oldValue) { OldValue = oldValue; }
+        }
         public delegate Context CreateContext(bool acquire);
+
+        public event EventHandler<FileChangedEventArgs> FileChanged;
         public event EventHandler Changed;
+
+        public System.Data.DataSet DataSet { get; private set; }
+        public HashSet<string> Values { get; private set; }
+        public Action<Action> UIThreadCall { get; private set; }
 
         private System.Threading.Semaphore _useContexts;
         private CreateContext _createContext;
         private HashSet<Context> _contexts = new HashSet<Context>();
         private HashSet<Context> _freeContexts = new HashSet<Context>();
 
-        public ContextManager(CreateContext createContext, int maxItems)
+
+        private Actions.File _file;
+        public Actions.File File
+        {
+            get { return _file; }
+            set
+            {
+                var ea = new FileChangedEventArgs(_file);
+                _file = value;
+                FileChanged?.Invoke(this, ea);
+            }
+        }
+
+        public ContextManager(CreateContext createContext, Action<Action> uiThreadSync = null, int maxItems = 9)
         {
             _createContext = createContext;
+            UIThreadCall = uiThreadSync ?? ((a) => a());
+            DataSet = new System.Data.DataSet();
+            Values = new HashSet<string>();
             SetMaxItem(maxItems);
         }
 
         public void Dispose()
         {
             if (_useContexts != null) { _useContexts.Dispose(); _useContexts = null; }
+            if (DataSet != null) { DataSet.Dispose(); DataSet = null; }
         }
 
         public void SetMaxItem(int maxItems)
@@ -63,7 +91,6 @@ namespace Fetcher2.Core
             }
         }
 
-
         public void AddContext(Context context, bool acquired)
         {
             lock (this) _contexts.Add(context);
@@ -101,8 +128,7 @@ namespace Fetcher2.Core
 
         public Context GetContext(Context source, int timeout = -1)
         {
-            //source.Wait(_useContexts, timeout)
-            if (!_useContexts.WaitOne(timeout)) return null;
+            if (!source.Wait(_useContexts, timeout)) return null;
             Context ret = PopContext();
             if (ret == null) {
                 ret = _createContext(true);
@@ -117,5 +143,11 @@ namespace Fetcher2.Core
 
         public int ContextCount { get { lock (this) return _contexts.Count; } }
         public int RuningContextCount { get { lock (this) return _contexts.Count - _freeContexts.Count; } }
+
+        public void ClearData()
+        {
+            UIThreadCall(() => DataSet.Tables.Clear());
+            lock (Values) Values.Clear();
+        }
     }
 }

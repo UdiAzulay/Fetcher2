@@ -12,16 +12,8 @@ namespace Fetcher2.UI
         public static string FileExt = ".fetcher2";
         private static string DefaultFilter { get { return string.Format("{0} (*{1})|*{1}|All files (*.*)|*.*", Application.ProductName, FileExt); } }
 
-        public class FileChangedEventArgs : EventArgs
-        {
-            public Actions.File OldFile { get; private set; }
-            public FileChangedEventArgs(Actions.File oldFile) { OldFile = oldFile; }
-        }
         public event EventHandler<DocumentEventArgs> DocumentCreated;
-        public event EventHandler<FileChangedEventArgs> FileChanged;
         public Core.ContextManager ContextManager { get; private set; }
-        public System.Data.DataSet DataSet { get; private set; }
-        public System.Collections.Generic.HashSet<string> Values { get; private set; }
 
         public UI.ActionsListStrip ActionsList { get; private set; }
         public UI.PropertiesStrip Properties { get; private set; }
@@ -34,23 +26,9 @@ namespace Fetcher2.UI
         private ToolStripStatusLabel StatusRowCount;
         private ToolStripStatusLabel StatusBox;
 
-        private Actions.File _file;
-        public Actions.File File
-        {
-            get { return _file; }
-            set
-            {
-                var ea = new FileChangedEventArgs(_file);
-                _file = value;
-                FileChanged?.Invoke(this, ea);
-            }
-        }
-
         public AppWindow(string fileName = null)
         {
-            ContextManager = new Core.ContextManager((b) => NewContext(b), 9);
-            DataSet = new System.Data.DataSet();
-            Values = new System.Collections.Generic.HashSet<string>();
+            ContextManager = new Core.ContextManager((b) => NewContext(b), this.InvokeOnUiThreadIfRequired, 9);
             IsMdiContainer = true;
             Text = Application.ProductName;
             Size = new System.Drawing.Size(800, 580);
@@ -81,8 +59,13 @@ namespace Fetcher2.UI
             });
             ContextManager.Changed += (s, a) => this.InvokeOnUiThreadIfRequired(() => StateContexts.Text = string.Format("{0} / {1} running", ContextManager.RuningContextCount, ContextManager.ContextCount));
             //ToolStripManager.LoadSettings(this);
-            if (fileName != null) Open(fileName);
-            else File = new Actions.File();
+            if (!string.IsNullOrEmpty(fileName) && System.IO.File.Exists(fileName)) Open(fileName);
+            else New();
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (ContextManager != null) { ContextManager.Dispose(); ContextManager = null; }
+            base.Dispose(disposing);
         }
 
         public ToolStripDropDownItem CreateNewActionMenu(ToolStripDropDownItem parent)
@@ -95,7 +78,7 @@ namespace Fetcher2.UI
             {
                 if (a.ClickedItem == scFile) return;
                 var item = Actions.Action.Create(a.ClickedItem.Text);
-                File.Children.Add(item);
+                ContextManager.File.Children.Add(item);
             };
             return parent;
         }
@@ -108,14 +91,14 @@ namespace Fetcher2.UI
                         new MenuButton("&New Solution", null, (s, a) => New()),
                         new ToolStripSeparator(),
                         new MenuButton("&Open Solution...", Icons.Icon_FileOpenFolder, (s, a) => Open(), Keys.Control| Keys.Shift | Keys.O) { },
-                        new MenuButton("&Save Solution", Icons.Icon_FileSave, (s, a) => Save(File.FileName), Keys.Control | Keys.Shift | Keys.S) { },
+                        new MenuButton("&Save Solution", Icons.Icon_FileSave, (s, a) => Save(ContextManager.File.FileName), Keys.Control | Keys.Shift | Keys.S) { },
                         new MenuButton("&Save Solution As...", Icons.Icon_FileSave, (s, a) => Save(null)) {  },
                         new ToolStripSeparator(),
                         new MenuButton("&Open Script...", Icons.Icon_FileOpen, (s, a) => OpenScript(), Keys.Control | Keys.O) { },
                         new ToolStripSeparator(),
                         new MenuButton("&New Browser", null, (s, a) => new BrowserDocument(this), Keys.Control | Keys.N) { },
                         new ToolStripSeparator(),
-                        new MenuButton("&Save Data...", Icons.Icon_FileSaveAll, (s, a) => Core.DataUtils.Save(DataSet, File.OutputPath, null, this), Keys.Control | Keys.E) { },
+                        new MenuButton("&Save Data...", Icons.Icon_FileSaveAll, (s, a) => Core.DataUtils.Save(ContextManager.DataSet, ContextManager.File.OutputPath, null, this), Keys.Control | Keys.E) { },
                         new ToolStripSeparator(),
                         new MenuButton("&Exit", null, (s, a) => Close(), Keys.Alt | Keys.F4),
                     }
@@ -138,7 +121,7 @@ namespace Fetcher2.UI
                         new MenuButton("Clear &Log", null, (s, a) => LogAndData.LogTextBox.Clear()),
                         new ToolStripSeparator(),
                         new MenuButton("Refre&sh Data", null, (s, a) => LogAndData.RefreshDataTables()),
-                        new MenuButton("Clear &Data", null, (s, a) => { DataSet.Tables.Clear(); lock (Values) Values.Clear(); }),
+                        new MenuButton("Clear &Data", null, (s, a) => ContextManager.ClearData()),
                         new ToolStripSeparator(),
                         new MenuButton("Close All &Windows", null, (s, a) => CloseAllDocuments()),
                     },
@@ -200,7 +183,9 @@ namespace Fetcher2.UI
 
         private void Context_StateChanged(object sender, EventArgs e)
         {
-            StateBox.Text = (sender as Core.Context).State.ToString();
+            var state = (sender as Core.Context).State;
+            StateBox.Text = state.ToString();
+            if (state != Core.ContextState.Paly) LogAndData.RefreshDataTables();
         }
 
         public string Status { get { return StatusBox.Text; } set { StatusBox.Text = value; } }
@@ -238,7 +223,7 @@ namespace Fetcher2.UI
             if (string.IsNullOrEmpty(fileName)) fileName = this.GetOpenFileName("Script Files (*.js)|*.js|All files (*.*)|*.*");
             if (fileName == null) return;
             var doc = new TextDocument(this, fileName);
-            if (addAction) File.Children.Add(doc.Action as Actions.Action);
+            if (addAction) ContextManager.File.Children.Add(doc.Action as Actions.Action);
             doc.Show();
         }
 
@@ -247,19 +232,17 @@ namespace Fetcher2.UI
             foreach (var v in MdiChildren) v.Close();
         }
 
-        public void New()
-        {
-            File = new Actions.File();
-        }
+        public void New() { ContextManager.File = new Actions.File(); }
 
         public void Open(string fileName = null)
         {
             if (string.IsNullOrEmpty(fileName)) fileName = this.GetOpenFileName(FileExt, DefaultFilter);
             if (fileName == null) return;
-            File = Actions.File.Load(fileName);
-            if (!string.IsNullOrEmpty(File.Url)) {
+            ContextManager.File = Actions.File.Load(fileName);
+            if (!string.IsNullOrEmpty(ContextManager.File.Url)) {
                 var v = new BrowserDocument(this);
-                v.Context.LoadUrl(File.Url);
+                Application.DoEvents();
+                v.Context.LoadUrl(ContextManager.File.Url);
             }
         }
 
@@ -267,13 +250,13 @@ namespace Fetcher2.UI
         {
             if (string.IsNullOrEmpty(fileName)) fileName = this.GetSaveFileName(FileExt, DefaultFilter);
             if (fileName == null) return;
-            File.Save(fileName);
+            ContextManager.File.Save(fileName);
         }
 
         public void ShowAbout()
         {
             MessageBox.Show(this,
-                string.Format("{0}\r\nModern Systems Ltd(c) 2019\r\nOpen source under MIT License", Application.ProductName),
+                string.Format("{0}\r\nUdi azulay, Modern Systems Ltd(c) 2019\r\nOpen source under MIT License", Application.ProductName),
                 "About", MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
         }
 

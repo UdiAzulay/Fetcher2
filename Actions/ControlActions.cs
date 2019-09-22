@@ -56,7 +56,6 @@ namespace Fetcher2.Actions
             return data;
         }
     }
-
     
     public class Navigate : Action
     {
@@ -77,7 +76,7 @@ namespace Fetcher2.Actions
             if (Once) { 
                 var href = GetHrefFromData(context, data);
                 if (!string.IsNullOrEmpty(href))
-                    lock (context.Values) return context.Values.Contains("Navigate$" + href) ? 0 : 1;
+                    lock (context.Manager.Values) return context.Manager.Values.Contains("Navigate$" + href) ? 0 : 1;
             }
             return base.GetItemCount(context, data);
         }
@@ -86,7 +85,7 @@ namespace Fetcher2.Actions
         {
             var href = GetHrefFromData(context, data);
             context.LoadUrl(href);
-            if (Once) lock (context.Values) context.Values.Add("Navigate$" + href);
+            if (Once) lock (context.Manager.Values) context.Manager.Values.Add("Navigate$" + href);
             context.WaitPage(Timeout);
             return href;
         }
@@ -105,8 +104,10 @@ namespace Fetcher2.Actions
             var href = Navigate.GetHrefFromData(context, data);
             var newContext = context.PushContext(ContextTimeout);
             if (Clone) {
-                newContext.LoadUrl(context.Browser.Address);
-                newContext.WaitPage();
+                var srcFrame = context.Browser.GetBrowser().MainFrame;
+                var src = srcFrame.GetSourceAsync().Result;
+                newContext.Browser.GetBrowser().MainFrame.LoadStringForUrl(src, context.Browser.Address);
+                newContext.WaitPage(); //100
             }
             newContext.Play(this, data, true, context.State == Core.ContextState.Pause);
             return null;

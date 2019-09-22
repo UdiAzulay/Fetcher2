@@ -99,9 +99,9 @@ namespace Fetcher2.Actions
             switch (Action)
             {
                 case ValueAction.Exist:
-                case ValueAction.Remove: lock (context.Values) return context.Values.Contains(key) ? 1 : 0; 
+                case ValueAction.Remove: lock (context.Manager.Values) return context.Manager.Values.Contains(key) ? 1 : 0; 
                 case ValueAction.NotExist:
-                case ValueAction.Add: lock (context.Values) return context.Values.Contains(key) ? 0 : 1;
+                case ValueAction.Add: lock (context.Manager.Values) return context.Manager.Values.Contains(key) ? 0 : 1;
             }
             return base.GetItemCount(context, data);
         }
@@ -111,8 +111,8 @@ namespace Fetcher2.Actions
             var key = FormatGroupName(data);
             switch (Action)
             {
-                case ValueAction.Add: lock (context.Values) context.Values.Add(key); break;
-                case ValueAction.Remove: lock (context.Values) context.Values.Remove(key); break;
+                case ValueAction.Add: lock (context.Manager.Values) context.Manager.Values.Add(key); break;
+                case ValueAction.Remove: lock (context.Manager.Values) context.Manager.Values.Remove(key); break;
             }
             return data;
         }

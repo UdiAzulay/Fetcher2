@@ -96,7 +96,7 @@ namespace Fetcher2.UI
                 }
             };
             base.Control.Controls.AddRange(new Control[] { List, ToolBar });
-            OwnerWindow.FileChanged += OwnerWindow_FileChanged;
+            OwnerWindow.ContextManager.FileChanged += OwnerWindow_FileChanged;
             OwnerWindow.MdiChildActivate += OwnerWindow_MdiChildActivate;
         }
 
@@ -106,7 +106,7 @@ namespace Fetcher2.UI
             var cp = List.PointToClient(new System.Drawing.Point(e.X, e.Y));
             var trgitem = List.GetItemAt(cp.X, cp.Y);
             var target = trgitem?.Tag as Actions.Action;
-            var targetParent = (target == null) ? OwnerWindow.File : target as Actions.ParentAction;
+            var targetParent = (target == null) ? OwnerWindow.ContextManager.File : target as Actions.ParentAction;
             var source = srcItem?.Tag as Actions.Action;
             if (source == null || source == target || targetParent == null) return false;
             var ret = targetParent.CanHaveChild(source);
@@ -193,10 +193,10 @@ namespace Fetcher2.UI
             return List.Items[key];
         }
 
-        private void OwnerWindow_FileChanged(object sender, AppWindow.FileChangedEventArgs e)
+        private void OwnerWindow_FileChanged(object sender, Core.ContextManager.FileChangedEventArgs e)
         {
-            if (e.OldFile != null) e.OldFile.Changed -= File_Changed;
-            if (OwnerWindow.File != null) OwnerWindow.File.Changed += File_Changed;
+            if (e.OldValue != null) e.OldValue.Changed -= File_Changed;
+            if (sender is Core.ContextManager cm && cm.File != null) cm.Changed += File_Changed;
             RefreshActions();
         }
 
@@ -205,7 +205,7 @@ namespace Fetcher2.UI
         public void RefreshActions()
         {
             List.Items.Clear();
-            RefreshActions(OwnerWindow.File, 0);
+            RefreshActions(OwnerWindow.ContextManager.File, 0);
         }
 
         private void RefreshActions(Actions.Action action, int indent)
@@ -247,7 +247,50 @@ namespace Fetcher2.UI
         public TextBox LogTextBox { get; private set; }
         public TabControl TabControl { get; private set; }
         public void LogWrite(string value) { LogTextBox.AppendText(value); }
-        private DateTime _lastGridUpdate;
+
+        private class TableTab : TabPage
+        {
+            public event EventHandler Changed;
+            private DateTime _lastGridUpdate;
+            public DataGrid GridView { get; private set; }
+            private System.Data.DataTable _table;
+            public System.Data.DataTable Table
+            {
+                get { return _table; }
+                set {
+                    if (_table != null) _table.RowChanged -= CurTable_RowChanged;
+                    _table = value;
+                    if (_table != null) _table.RowChanged += CurTable_RowChanged;
+                    GridView.DataSource = _table;
+                }
+            }
+
+            private void CurTable_RowChanged(object sender, System.Data.DataRowChangeEventArgs e)
+            {
+                if (!(e.Action == System.Data.DataRowAction.Add || e.Action == System.Data.DataRowAction.Delete)) return;
+                if ((DateTime.Now - _lastGridUpdate).Seconds < 1) return;
+                _lastGridUpdate = DateTime.Now;
+                GridView.Refresh();
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+
+            public TableTab(string tableName): base(tableName)
+            {
+                GridView = new DataGrid() {
+                    Dock = DockStyle.Fill,
+                    ReadOnly = true,
+                    CaptionVisible = false,
+                };
+                Controls.Add(GridView);
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (_table != null) Table = null;
+                base.Dispose(disposing);
+            }
+        }
+
         public LogAndDataStrip(AppWindow owner) : base(owner, new TabControl() { Dock = DockStyle.Fill })
         {
             TabControl = base.Control as TabControl;
@@ -257,23 +300,55 @@ namespace Fetcher2.UI
             logPage.Controls.Add(LogTextBox);
             TabControl.Controls.Add(logPage);
             TabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
-            OwnerWindow.DataSet.Tables.CollectionChanged += Tables_CollectionChanged;
             OwnerWindow.DocumentCreated += OwnerWindow_DocumentCreated;
-            //owner.FileChanged += Owner_ContextChanged;
-        }
-
-        private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            if (TabControl.SelectedIndex > 0) {
-                var dataTable = ((TabControl.SelectedTab?.Controls[0] as DataGrid)?.DataSource as System.Data.DataTable);
-                OwnerWindow.RowCount = dataTable != null ? dataTable.Rows.Count.ToString() + " rows" : "";
-            } else OwnerWindow.RowCount = "";
+            OwnerWindow.ContextManager.DataSet.Tables.CollectionChanged += Tables_CollectionChanged;
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) OwnerWindow.DocumentCreated -= OwnerWindow_DocumentCreated;
+            if (!disposing)
+            {
+                OwnerWindow.DocumentCreated -= OwnerWindow_DocumentCreated;
+                var dataSet = OwnerWindow?.ContextManager?.DataSet;
+                if (dataSet != null) dataSet.Tables.CollectionChanged -= Tables_CollectionChanged;
+            }
             base.Dispose(disposing);
+        }
+
+        private void Tables_CollectionChanged(object sender, System.ComponentModel.CollectionChangeEventArgs e)
+        {
+            SetupDataTables();
+        }
+
+        private void SetupDataTables()
+        {
+            while (TabControl.Controls.Count > 1)
+            {
+                var tab = TabControl.Controls[TabControl.Controls.Count - 1] as TableTab;
+                TabControl.Controls.Remove(tab);
+                tab.Dispose();
+            }
+            if (OwnerWindow.ContextManager.DataSet == null) return;
+            foreach (System.Data.DataTable t in OwnerWindow.ContextManager.DataSet.Tables)
+            {
+                var page = new TableTab(t.TableName) { Table = t };
+                page.Changed += TableTab_Changed;
+                TabControl.Controls.Add(page);
+            }
+        }
+
+        private void TableTab_Changed(object sender, EventArgs e)
+        {
+            if (sender == TabControl.SelectedTab)
+                TabControl_SelectedIndexChanged(TabControl, EventArgs.Empty);
+        }
+
+        private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            System.Data.DataTable dataTable = null;
+            if (TabControl.SelectedIndex > 0) dataTable = (TabControl.SelectedTab as TableTab)?.Table;
+            if (dataTable != null) OwnerWindow.RowCount = dataTable.Rows.Count.ToString() + " rows";
+            else OwnerWindow.RowCount = "";
         }
 
         private void OwnerWindow_DocumentCreated(object sender, DocumentEventArgs e)
@@ -284,11 +359,6 @@ namespace Fetcher2.UI
             browserDoc.FormClosed += (s, a)=> browserDoc.Context.Logger -= Context_Logger;
         }
 
-        private void Tables_CollectionChanged(object sender, System.ComponentModel.CollectionChangeEventArgs e)
-        {
-            SetupDataTables();
-        }
-
         private void Context_Logger(object sender, Core.Context.LogEventArgs e)
         {
             LogTextBox.AppendText(string.Format("{0}\t{1}\r\n", e.Category, e.Text));
@@ -297,36 +367,10 @@ namespace Fetcher2.UI
         public void RefreshDataTables()
         {
             for (int i = 1; i < TabControl.Controls.Count; i++)
-                (TabControl.Controls[i].Controls[0] as DataGrid).Refresh();
+                (TabControl.Controls[i] as TableTab).Refresh();
             TabControl_SelectedIndexChanged(TabControl, EventArgs.Empty);
         }
 
-        public void SetupDataTables()
-        {
-            while (TabControl.Controls.Count > 1) {
-                var tab = TabControl.Controls[TabControl.Controls.Count - 1];
-                var dataTable = (tab.Controls[0] as DataGrid).DataSource as System.Data.DataTable;
-                dataTable.RowChanged -= Table_Change;
-                TabControl.Controls.Remove(tab);
-                tab.Dispose();
-            }
-            foreach (System.Data.DataTable t in OwnerWindow.DataSet.Tables)
-            {
-                t.RowChanged += Table_Change;
-                var page = new TabPage(t.TableName) { Name = t.TableName };
-                page.Controls.Add(new DataGrid() { Dock = DockStyle.Fill, DataSource = t, CaptionVisible = false, ReadOnly = true });
-                TabControl.Controls.Add(page);
-            }
-        }
 
-        private void Table_Change(object sender, System.Data.DataRowChangeEventArgs e)
-        {
-            if (!(e.Action == System.Data.DataRowAction.Add || e.Action == System.Data.DataRowAction.Delete)) return;
-            var table = (sender as System.Data.DataTable);
-            if ((DateTime.Now - _lastGridUpdate).Seconds < 1) return;
-            (TabControl.Controls[table.TableName].Controls[0] as DataGrid).Refresh();
-            TabControl_SelectedIndexChanged(TabControl, EventArgs.Empty);
-            _lastGridUpdate = DateTime.Now;
-        }
     }
 }

@@ -134,8 +134,7 @@ namespace Fetcher2.UI
                     new ToolStripButton("Go", null, (s, a) => Context.LoadUrl(AddressBox.Text)) { Alignment = ToolStripItemAlignment.Right },
                 }
             };
-            //new CefSharp.Web.HtmlString("<center><h1>Enter URL</h1></center>")
-            Browser = new ChromiumWebBrowser((string) null) {
+            Browser = new ChromiumWebBrowser(new CefSharp.Web.HtmlString("<center><h1>Enter URL</h1></center>")) {
                 Dock = DockStyle.Fill,
                 BrowserSettings = new BrowserSettings()
                 {
@@ -163,7 +162,7 @@ namespace Fetcher2.UI
                     AddressBar.Items["navigate-backward"].Enabled = a.CanGoBack;
                 });
             };
-            OwnerWindow.FileChanged += OwnerWindow_FileChanged;
+            OwnerWindow.ContextManager.FileChanged += OwnerWindow_FileChanged;
             OwnerWindow_FileChanged(OwnerWindow, EventArgs.Empty);
             owner.ContextManager.AddContext(Context, contextAcquired);
             if (show) Show();
