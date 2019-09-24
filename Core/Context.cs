@@ -94,8 +94,8 @@ namespace Fetcher2.Core
             if (_executeTask != null) {_executeTask.Dispose(); _executeTask = null; }
             if (_breakEvent != null) { _continueEvent.Dispose(); _continueEvent = null; }
             if (_continueEvent != null) {_continueEvent.Dispose(); _continueEvent = null; }
-            if (_frameLoadEvent != null) {_frameLoadEvent.Dispose(); _frameLoadEvent = null; }
-            if (_pageLoadEvent != null) {_pageLoadEvent.Dispose(); _pageLoadEvent = null; }
+            if (_frameLoadEvent != null) { _frameLoadEvent.Dispose(); _frameLoadEvent = null; }
+            if (_pageLoadEvent != null) { _pageLoadEvent.Dispose(); _pageLoadEvent = null; }
         }
 
         public object Eval(string script)

@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Linq;
 using System.Windows.Forms;
-using CefSharp;
-using CefSharp.WinForms;
 using CefSharp.WinForms.Internals;
-using Fetcher2;
+
 namespace Fetcher2.UI
 {
     public class AppWindow : Form
@@ -264,7 +262,7 @@ namespace Fetcher2.UI
         public void ShowAbout()
         {
             MessageBox.Show(this,
-                string.Format("{0}\r\nUdi azulay, Modern Systems Ltd(c) 2019\r\nOpen source under MIT License", Application.ProductName),
+                string.Format("{0}\r\nUdi azulay, Modern Systems Ltd(c) 2019\r\nOpen source under MIT License", Application.ProductName), 
                 "About", MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
         }
 

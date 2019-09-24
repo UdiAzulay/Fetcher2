@@ -20,7 +20,7 @@ namespace Fetcher2.Actions
         [XmlElement(IsNullable = false)]
         public string Selector { get; set; }
 
-        [XmlAttribute, DefaultValue(0)]
+        [XmlAttribute, DefaultValue(false)]
         public bool IsGlobal { get; set; }
 
         [XmlElement(IsNullable = false)]
@@ -34,10 +34,10 @@ namespace Fetcher2.Actions
 
         [XmlAttribute, DefaultValue(0)]
         public int MaxItems { get; set; }
-
+        /*
         [XmlAttribute, DefaultValue(false)]
         public bool Desc { get; set; }
-
+        */
         protected virtual object ExecuteElement(Core.Context context, Core.ElementReference element, object data) { return data; }
 
         public override int GetItemCount(Core.Context context, object data = null)
