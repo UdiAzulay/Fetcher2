@@ -42,43 +42,43 @@ namespace Fetcher2.Core
                 case ".mdb": providerProds = "Access 8.0;HDR=YES"; break;
                 default: throw new Exception("unknown file extention");
             }
-            if (tableName == null) {
-                using (var con = new System.Data.OleDb.OleDbConnection())
+            using (var con = new System.Data.OleDb.OleDbConnection())
+            {
+                con.ConnectionString = "Provider=" + providerName + ";Data Source=" + dataSource + ";Extended Properties='" + providerProds + "'";
+                con.Open();
+                foreach (System.Data.DataTable t in dataSet.Tables)
                 {
-                    con.ConnectionString = "Provider=" + providerName + ";Data Source=" + dataSource + ";Extended Properties='" + providerProds + "'";
-                    con.Open();
-                    foreach (System.Data.DataTable t in dataSet.Tables)
+                    if (tableName != null && tableName != t.TableName) continue;
+                    var exportName = string.Format(tableNameFormat, t.TableName);
+                    using (var command = new System.Data.OleDb.OleDbCommand(null, con))
                     {
-                        if (tableName != null && tableName != t.TableName) continue;
-                        var tabeName = string.Format(tableNameFormat, t.TableName);
-                        using (var command = new System.Data.OleDb.OleDbCommand(null, con))
+                        string sqlCreate = string.Format("Create Table {0} (", exportName);
+                        string sqlInsert = string.Format("Insert Into {0} (", exportName);
+                        string sqlInsertValues = "Values(";
+                        foreach (System.Data.DataColumn c in t.Columns)
                         {
-                            string sqlCreate = string.Format("Create Table {0} (", tabeName);
-                            string sqlInsert = string.Format("Insert Into {0} (", tabeName);
-                            string sqlInsertValues = "Values(";
-                            foreach (System.Data.DataColumn c in t.Columns)
-                            {
-                                var p = command.CreateParameter();
-                                //p.ParameterName = c.ColumnName;
-                                command.Parameters.Add(p);
-                                string oleDbType = "Note";
-                                if (c.DataType == typeof(int) | c.DataType == typeof(short) | c.DataType == typeof(byte)) oleDbType = "LONG";
-                                sqlCreate += string.Format("[{0}] {1}, ", c.ColumnName, oleDbType);
-                                sqlInsert += string.Format("[{0}], ", c.ColumnName);
-                                sqlInsertValues += "?, ";
-                            }
-                            command.CommandText = sqlCreate.TrimEnd(' ', ',') + ")";
-                            command.ExecuteNonQuery();
-                            command.CommandText = sqlInsert.TrimEnd(' ', ',') + ")" + sqlInsertValues.TrimEnd(' ', ',') + ")";
-                            foreach (System.Data.DataRow r in t.Rows)
-                            {
-                                for (int c =0; c < t.Columns.Count; c++) command.Parameters[c].Value = r[c];
-                                command.ExecuteNonQuery();
-                            }
+                            var p = command.CreateParameter();
+                            p.SourceColumn = c.ColumnName;
+                            command.Parameters.Add(p);
+                            string oleDbType = "Note";
+                            if (c.DataType == typeof(int) | c.DataType == typeof(short) | c.DataType == typeof(byte)) oleDbType = "LONG";
+                            sqlCreate += string.Format("[{0}] {1}, ", c.ColumnName, oleDbType);
+                            sqlInsert += string.Format("[{0}], ", c.ColumnName);
+                            sqlInsertValues += "?, ";
+                        }
+                        command.CommandText = sqlCreate.TrimEnd(' ', ',') + ")";
+                        command.ExecuteNonQuery();
+                        command.CommandText = sqlInsert.TrimEnd(' ', ',') + ")" + sqlInsertValues.TrimEnd(' ', ',') + ")";
+                        using (var adp = new System.Data.OleDb.OleDbDataAdapter(null, con))
+                        {
+                            if (t.TableName != exportName) adp.TableMappings.Add(t.TableName, exportName);
+                            adp.InsertCommand = command;
+                            adp.Update(t);
+                            adp.InsertCommand = null;
                         }
                     }
-                    con.Close();
                 }
+                con.Close();
             }
         }
     }

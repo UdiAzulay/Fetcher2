@@ -32,7 +32,11 @@ namespace Fetcher2.UI
         public static string GetSaveFileName(this IWin32Window owner, string fileName = null, string filter = null)
         {
             using (var dlgFileOpen = new SaveFileDialog())
-                return GetFileName(dlgFileOpen, owner, fileName, filter);
+            {
+                var ret = GetFileName(dlgFileOpen, owner, fileName, filter);
+                if (System.IO.File.Exists(ret)) System.IO.File.Delete(ret);
+                return ret;
+            }
         }
     }
 }

@@ -332,7 +332,7 @@ namespace Fetcher2.Core
 
         public void SetField(string field, string value, bool isUnique = false)
         {
-            if (!Table.Columns.Contains(field)) Table.Columns.Add(field);
+            if (!Table.Columns.Contains(field)) Table.Columns.Add(field, typeof(string));
             if (Row == null) Row = Table.NewRow();
             Row[field] += value;
             if (isUnique) AddValidator(field, (r, c) => (r.Table.FindValue(c, r[c]).Count == 0));
