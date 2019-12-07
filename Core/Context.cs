@@ -315,6 +315,7 @@ namespace Fetcher2.Core
         private List<Tuple<string, Func<System.Data.DataRow, System.Data.DataColumn, bool>>> _validators = new List<Tuple<string, Func<System.Data.DataRow, System.Data.DataColumn, bool>>>();
 
         public Record(System.Data.DataTable table) { Table = table; }
+
         public bool IsValid(System.Data.DataRow row)
         {
             foreach (var v in _validators)
@@ -324,7 +325,9 @@ namespace Fetcher2.Core
             }
             return true;
         }
+
         public void ClearValidators() { _validators.Clear(); }
+
         public void AddValidator(string field, Func<System.Data.DataRow, System.Data.DataColumn, bool> vaidation)
         {
             _validators.Add(new Tuple<string, Func<System.Data.DataRow, System.Data.DataColumn, bool>>(field, vaidation));
